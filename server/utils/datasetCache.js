@@ -3,6 +3,40 @@ const cheerio = require('cheerio');
 
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h
 const DATASET_CACHE = new Map();
+const SOURCE_BASE = 'https://proteomecentral.proteomexchange.org';
+
+function preferredDatasetUrl(datasetId) {
+  const id = String(datasetId || '').trim().toUpperCase();
+  if (!id) return `${SOURCE_BASE}/cgi/GetDataset`;
+
+  // PRIDE project pages are generally more stable than ProteomeCentral CGI pages.
+  if (/^(PXD|RPXD|PRXD)\d{6}$/.test(id)) {
+    const canonical = id.startsWith('RPXD') ? id.slice(1) : id.startsWith('PRXD') ? `PXD${id.slice(4)}` : id;
+    return `https://www.ebi.ac.uk/pride/archive/projects/${encodeURIComponent(canonical)}`;
+  }
+
+  return `${SOURCE_BASE}/cgi/GetDataset?ID=${encodeURIComponent(id)}`;
+}
+
+function normalizeExternalUrl(rawUrl, fallbackUrl = null) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return fallbackUrl;
+  if (/^javascript:/i.test(raw)) return fallbackUrl;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^\/\//.test(raw)) return `https:${raw}`;
+  if (/^doi:\s*/i.test(raw)) {
+    return `https://doi.org/${raw.replace(/^doi:\s*/i, '').trim()}`;
+  }
+  if (/^10\.\d{4,9}\//.test(raw)) return `https://doi.org/${raw}`;
+  const pmid = raw.match(/^pmid:\s*(\d+)$/i);
+  if (pmid) return `https://pubmed.ncbi.nlm.nih.gov/${pmid[1]}/`;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}($|\/)/i.test(raw)) return `https://${raw}`;
+  try {
+    return new URL(raw, SOURCE_BASE).href;
+  } catch {
+    return fallbackUrl;
+  }
+}
 
 function cacheGet(id) {
   const hit = DATASET_CACHE.get(id);
@@ -22,7 +56,7 @@ async function scrapeProteomeCentral(datasetId) {
   const cached = cacheGet(datasetId);
   if (cached) return cached;
 
-  const url = `https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=${encodeURIComponent(
+  const url = `${SOURCE_BASE}/cgi/GetDataset?ID=${encodeURIComponent(
     datasetId
   )}`;
   const { data: html } = await axios.get(url, {
@@ -98,16 +132,16 @@ async function scrapeProteomeCentral(datasetId) {
       $row.find('a').each((_, a) => {
         const $a = $(a);
         const t = norm($a.text());
-        const href = $a.attr('href') || '';
+        const href = normalizeExternalUrl($a.attr('href'), null);
         if (/^\[[^\]]+\]$/.test(t)) {
           citations.push({ label: t.replace(/^\[|\]$/g, ''), url: href || null });
           return;
         }
-        if (/pubmed/i.test(href)) {
+        if (href && /pubmed/i.test(href)) {
           citations.push({ label: 'pubmed', url: href });
           return;
         }
-        if (/doi\.org/i.test(href)) {
+        if (href && /doi\.org/i.test(href)) {
           citations.push({ label: 'doi', url: href });
         }
       });
@@ -123,7 +157,7 @@ async function scrapeProteomeCentral(datasetId) {
     title,
     firstPublicationRow,
     citations,
-    sourceUrl: url,
+    sourceUrl: preferredDatasetUrl(datasetId),
   };
   cacheSet(datasetId, result);
   return result;
@@ -144,7 +178,7 @@ async function fetchSummariesBatched(ids, batchSize = 4) {
             title: null,
             firstPublicationRow: null,
             citations: [],
-            sourceUrl: `https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=${id}`,
+            sourceUrl: preferredDatasetUrl(id),
           };
         }
       })

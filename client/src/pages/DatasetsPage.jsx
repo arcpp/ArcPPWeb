@@ -15,7 +15,42 @@ export default function DatasetsPage() {
     background: isDark ? '#0b1320' : '#f4f7f8',
   };
 
-  const linkStyle = { color: isDark ? '#a9c9df' : '#325f86', textDecoration: 'none' };
+  const normalizeDatasetId = (id) => {
+    const text = String(id || '').trim().toUpperCase();
+    const match = text.match(/\b(?:PXD|RPXD|PRXD)\d{6}\b/);
+    return match ? match[0] : text;
+  };
+  const datasetSourceFromId = (id) => {
+    const normalized = normalizeDatasetId(id);
+    if (/^(PXD|RPXD|PRXD)\d{6}$/.test(normalized)) {
+      const canonical = normalized.startsWith('RPXD')
+        ? normalized.slice(1)
+        : normalized.startsWith('PRXD')
+          ? `PXD${normalized.slice(4)}`
+          : normalized;
+      return `https://www.ebi.ac.uk/pride/archive/projects/${encodeURIComponent(canonical)}`;
+    }
+    return `https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=${encodeURIComponent(normalized)}`;
+  };
+  const safeUrl = (rawUrl, fallbackUrl) => {
+    const raw = String(rawUrl || '').trim();
+    if (!raw) return fallbackUrl;
+    if (/^javascript:/i.test(raw)) return fallbackUrl;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (/^\/\//.test(raw)) return `https:${raw}`;
+    if (/^doi:\s*/i.test(raw)) return `https://doi.org/${raw.replace(/^doi:\s*/i, '').trim()}`;
+    if (/^10\.\d{4,9}\//.test(raw)) return `https://doi.org/${raw}`;
+    const pmid = raw.match(/^pmid:\s*(\d+)$/i);
+    if (pmid) return `https://pubmed.ncbi.nlm.nih.gov/${pmid[1]}/`;
+    if (/^[a-z0-9.-]+\.[a-z]{2,}($|\/)/i.test(raw)) return `https://${raw}`;
+    try {
+      return new URL(raw, 'https://proteomecentral.proteomexchange.org').href;
+    } catch {
+      return fallbackUrl;
+    }
+  };
+
+  const linkStyle = { color: isDark ? '#a9c9df' : '#325f86', textDecoration: 'underline', textDecorationThickness: '1px', textUnderlineOffset: '2px' };
 
   useEffect(() => {
     let cancel = false;
@@ -72,7 +107,7 @@ export default function DatasetsPage() {
                   {rows.map((r) => (
                     <tr key={r.id}>
                       <Td isDark={isDark} mono>
-                        <a href={r.sourceUrl} target="_blank" rel="noreferrer" style={linkStyle}>
+                        <a href={safeUrl(r.sourceUrl, datasetSourceFromId(r.id))} target="_blank" rel="noreferrer" style={linkStyle}>
                           {r.id}
                         </a>
                       </Td>
@@ -89,7 +124,7 @@ export default function DatasetsPage() {
                             {r.citations.map((c, idx) => (
                               <a
                                 key={idx}
-                                href={(c && c.url) || r.sourceUrl}
+                                href={safeUrl(c?.url, safeUrl(r.sourceUrl, datasetSourceFromId(r.id)))}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{
