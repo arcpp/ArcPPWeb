@@ -20,31 +20,34 @@ function makeGlassTheme(mode = 'light') {
     paper_bgcolor: 'rgba(0,0,0,0)',
     plot_bgcolor: 'rgba(0,0,0,0)',
     font: { family: 'Inter, ui-sans-serif, system-ui', color: fg },
-    margin: { l: 140, r: 20, t: 36, b: 40 },
-      xaxis: {
-        automargin: true,
-        tickfont: { size: 12, color: tick },
-        gridcolor: grid,
-        zeroline: false,
-        showline: true,
-        linewidth: 1.2,
-        linecolor: axisLine,
-        tickcolor: axisLine,
-        ticks: 'outside',
-        tickmode: 'auto',
-        tickformat: 'd',
-      },
-      yaxis: {
-        automargin: true,
-        tickfont: { size: 12, color: tick },
-        gridcolor: gridY,
-        zeroline: false,
-        showline: true,
-        linewidth: 1.2,
-        linecolor: axisLine,
-        tickcolor: axisLine,
-        ticks: 'outside',
-      },
+    margin: { l: 110, r: 20, t: 28, b: 72 },
+    xaxis: {
+      automargin: false,
+      tickfont: { size: 12, color: tick },
+      titlefont: { size: 13, color: fg },
+      gridcolor: grid,
+      zeroline: false,
+      showline: true,
+      linewidth: 1.2,
+      linecolor: axisLine,
+      tickcolor: axisLine,
+      ticks: 'outside',
+      ticklen: 5,
+      tickmode: 'auto',
+      tickformat: 'd',
+      showticklabels: true,
+    },
+    yaxis: {
+      automargin: false,
+      tickfont: { size: 12, color: tick },
+      gridcolor: gridY,
+      zeroline: false,
+      showline: true,
+      linewidth: 1.2,
+      linecolor: axisLine,
+      tickcolor: axisLine,
+      ticks: 'outside',
+    },
     legend: { bgcolor: 'rgba(0,0,0,0)', borderwidth: 0, font: { color: tick } },
     hovermode: 'closest',
   };
@@ -143,38 +146,43 @@ const PeptideCoveragePlot = forwardRef(({
 
   const glass = useMemo(() => makeGlassTheme(mode), [mode]);
 
-  // Memoize layout so parent re-renders (e.g. from zoomToPosition changes)
-  // don't cause Plotly to re-apply layout and reset axis ticks.
-  // Strip tickvals/ticktext/tickmode from API xaxis so numeric auto-ticks always work.
+  // Build a fully explicit layout so automargin/server defaults can't hide
+  // the x-axis labels. Only data-dependent fields (title text, ranges,
+  // y-axis tick labels, shapes) are taken from the API response.
   const layout = useMemo(() => {
     if (!spec) return null;
     const specXaxis = spec.layout?.xaxis || {};
-    const { tickvals, ticktext, tickmode: _tm, ...xaxisRest } = specXaxis;
+    const specYaxis = spec.layout?.yaxis || {};
 
     return {
-      ...glass,
-      ...(spec.layout || {}),
+      paper_bgcolor: glass.paper_bgcolor,
+      plot_bgcolor: glass.plot_bgcolor,
+      font: glass.font,
+      legend: spec.layout?.legend
+        ? { ...spec.layout.legend, ...glass.legend }
+        : glass.legend,
+      hovermode: glass.hovermode,
+      shapes: spec.layout?.shapes || [],
+      height: 420,
+      autosize: true,
+      margin: glass.margin,
       uirevision: hvoId,
-      margin: { ...glass.margin, ...(spec.layout?.margin || {}) },
+      dragmode: 'pan',
       xaxis: {
         ...glass.xaxis,
-        ...xaxisRest,
+        title: { text: specXaxis.title || 'Protein Sequence Position', font: glass.xaxis.titlefont, standoff: 12 },
+        range: specXaxis.range || [1, sequenceLength.current || 100],
         type: 'linear',
-        tickmode: 'auto',
-        tickformat: 'd',
-        showticklabels: true,
-        showline: true,
-        linecolor: glass.xaxis.linecolor,
-        tickcolor: glass.xaxis.tickcolor,
       },
       yaxis: {
         ...glass.yaxis,
-        ...(spec.layout?.yaxis || {}),
-        showline: true,
-        linecolor: glass.yaxis.linecolor,
-        tickcolor: glass.yaxis.tickcolor,
+        title: { text: specYaxis.title || '', font: glass.xaxis.titlefont },
+        tickmode: specYaxis.tickmode,
+        tickvals: specYaxis.tickvals,
+        ticktext: specYaxis.ticktext,
+        range: specYaxis.range,
+        showticklabels: true,
       },
-      dragmode: 'pan',
     };
   }, [spec, glass, hvoId]);
 

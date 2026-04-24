@@ -86,6 +86,7 @@ export default function HomePage() {
   const [showDatasetGraphs, setShowDatasetGraphs] = useState(false);
   const [options, setOptions] = useState([]);
   const [optLoading, setOptLoading] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
   const [picked, setPicked] = useState(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -194,21 +195,30 @@ export default function HomePage() {
   }, [rows, sort]);
 
   useEffect(() => {
-    async function loadOptions() {
-      setOptLoading(true);
-      try {
-        const res = await fetch('/api/proteins/ids');
-        const data = await res.json();
-        const allIds = [...(data.hvo || []), ...(data.uniprot || [])];
-        setOptions(allIds.map((id) => ({ label: id, value: id })));
-      } catch (err) {
-        console.error('Failed to load options:', err);
-      } finally {
-        setOptLoading(false);
-      }
+    const q = searchInput.trim();
+    if (q.length < 2) {
+      setOptions([]);
+      setOptLoading(false);
+      return;
     }
-    loadOptions();
-  }, []);
+    let cancelled = false;
+    setOptLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/proteins/search?q=${encodeURIComponent(q)}&limit=20`);
+        const data = await res.json();
+        if (!cancelled) setOptions(Array.isArray(data?.results) ? data.results : []);
+      } catch (err) {
+        if (!cancelled) console.error('Search failed:', err);
+      } finally {
+        if (!cancelled) setOptLoading(false);
+      }
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchInput]);
 
   useEffect(() => {
     async function loadCoverage() {
@@ -245,30 +255,36 @@ export default function HomePage() {
     loadDatasets();
   }, [speciesValue]);
 
-  // Chart data
-  const selectedSpeciesStats = coverageData.find((d) => d.species === speciesValue?.value) || null;
-  const speciesNames = coverageData.map((d) => d.species);
-  const speciesNamesShort = speciesNames.map((name) => {
-    const parts = name.trim().split(/\s+/);
-    return parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : name;
-  });
+  const selectedSpeciesStats = useMemo(
+    () => coverageData.find((d) => d.species === speciesValue?.value) || null,
+    [coverageData, speciesValue]
+  );
 
-  const coverageChartData = speciesNamesShort.map((name, i) => ({
-    name,
-    value: coverageData[i]?.coveragePercent || 0,
-    fullName: speciesNames[i],
-  }));
-  const proteinsChartData = speciesNamesShort.map((name, i) => ({
-    name,
-    value: coverageData[i]?.observedProteins || 0,
-    fullName: speciesNames[i],
-  }));
+  const { coverageChartData, proteinsChartData } = useMemo(() => {
+    const speciesNames = coverageData.map((d) => d.species);
+    const speciesNamesShort = speciesNames.map((name) => {
+      const parts = name.trim().split(/\s+/);
+      return parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : name;
+    });
+    return {
+      coverageChartData: speciesNamesShort.map((name, i) => ({
+        name,
+        value: coverageData[i]?.coveragePercent || 0,
+        fullName: speciesNames[i],
+      })),
+      proteinsChartData: speciesNamesShort.map((name, i) => ({
+        name,
+        value: coverageData[i]?.observedProteins || 0,
+        fullName: speciesNames[i],
+      })),
+    };
+  }, [coverageData]);
 
   const chartGrid      = isDark ? 'rgba(255,255,255,0.05)' : '#e8edf2';
   const chartAxisColor = isDark ? 'rgba(255,255,255,0.12)' : '#d1d9e0';
   const chartTickFill  = isDark ? '#c8d8e8' : '#475569';
 
-  const tipStyle = {
+  const tipStyle = useMemo(() => ({
     contentStyle: {
       background: isDark ? '#162032' : '#fff',
       border: `1px solid ${isDark ? 'rgba(157,196,224,0.22)' : '#dce5ec'}`,
@@ -280,7 +296,7 @@ export default function HomePage() {
     labelStyle: { fontWeight: 600, color: isDark ? '#e2e8f0' : '#132334', marginBottom: 2 },
     itemStyle:  { color: isDark ? '#9cb0c4' : '#5f7282' },
     cursor:     { fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' },
-  };
+  }), [isDark]);
 
   const handleBarClick = (data) => {
     if (!data?.fullName) return;
@@ -411,11 +427,15 @@ export default function HomePage() {
                 disablePortal
                 options={options}
                 value={picked}
+                inputValue={searchInput}
+                onInputChange={(_, v) => setSearchInput(v)}
                 onChange={(e, v) => {
                   setPicked(v);
                   if (v?.value) navigate(`/plot/${v.value}`);
                 }}
                 loading={optLoading}
+                filterOptions={(x) => x}
+                noOptionsText={searchInput.trim().length < 2 ? 'Type at least 2 characters' : 'No matches'}
                 renderInput={(params) => (
                   <TextField
                     {...params}

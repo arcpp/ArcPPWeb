@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const redis = require('redis');
 
-const SEED_VERSION = '2.0';
+const SEED_VERSION = '3.0';
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || 6379;
@@ -21,6 +21,7 @@ const REDIS_PORT = process.env.REDIS_PORT || 6379;
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const PSM_FILE = path.join(DATA_DIR, 'redis-seed-psms.json');
 const SUMMARY_FILE = path.join(DATA_DIR, 'redis-seed-summaries.json');
+const PAGE_FILE = path.join(DATA_DIR, 'redis-seed-pages.json');
 
 function log(msg) {
   console.log(`[seed] ${msg}`);
@@ -85,11 +86,12 @@ async function main() {
   const start = Date.now();
   const psmCount = await loadFile(client, PSM_FILE, 'psms:', 'PSM');
   const sumCount = await loadFile(client, SUMMARY_FILE, 'protein:summary:', 'summary');
+  const pageCount = await loadFile(client, PAGE_FILE, 'protein:page:', 'page');
 
   await client.set('seed:version', SEED_VERSION);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(2);
-  log(`Redis seeding complete — ${psmCount} PSM + ${sumCount} summary entries in ${elapsed}s`);
+  log(`Redis seeding complete — ${psmCount} PSM + ${sumCount} summary + ${pageCount} page entries in ${elapsed}s`);
 
   await client.quit();
 }

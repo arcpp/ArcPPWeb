@@ -35,33 +35,57 @@ export default function ProteinPlotPage() {
 
   useEffect(() => {
     let cancelled = false;
+
+    function applyBundle(bundle) {
+      if (cancelled || !bundle) return;
+      setCoverage(bundle.coverage);
+      setProtein(bundle.details);
+      setPsmCount(typeof bundle.psmCount === 'number' ? bundle.psmCount : 0);
+      setSequenceData(bundle.sequence);
+      if (Array.isArray(bundle.psmsByDataset)) {
+        const total = bundle.psmsByDataset.reduce((sum, item) => sum + (item.psmCount || 0), 0);
+        setTotalPsms(total);
+      }
+    }
+
+    async function fetchBundled() {
+      try {
+        const res = await axios.get(`/api/proteins/${hvoId}/page`);
+        if (res.data?.coverage && res.data?.details && res.data?.sequence) {
+          applyBundle(res.data);
+          return true;
+        }
+      } catch (e) {
+        if (e.response?.status !== 404) console.warn('Bundled fetch failed:', e.message);
+      }
+      return false;
+    }
+
+    async function fetchIndividual() {
+      const [covRes, protRes, psmRes, seqRes, psmDatasetRes] = await Promise.all([
+        axios.get(`/api/coverage/${hvoId}`),
+        axios.get(`/api/proteins/${hvoId}/details`),
+        axios.get(`/api/proteins/${hvoId}/psm-count`),
+        axios.get(`/api/proteins/${hvoId}/sequence`),
+        axios.get(`/api/proteins/${hvoId}/psms-by-dataset`).catch(() => ({ data: { success: false, data: [] } })),
+      ]);
+      if (cancelled) return;
+      setCoverage(covRes.data);
+      setProtein(protRes.data);
+      setPsmCount(typeof psmRes.data?.psmCount === 'number' ? psmRes.data.psmCount : 0);
+      setSequenceData(seqRes.data);
+      if (psmDatasetRes.data?.success && psmDatasetRes.data.data) {
+        const total = psmDatasetRes.data.data.reduce((sum, item) => sum + item.psmCount, 0);
+        setTotalPsms(total);
+      }
+    }
+
     async function fetchAll() {
       setLoading(true);
       setErr('');
       try {
-        const [covRes, protRes, psmRes, seqRes, psmDatasetRes] = await Promise.all([
-          axios.get(`/api/coverage/${hvoId}`),
-          axios.get(`/api/proteins/${hvoId}/details`),
-          axios.get(`/api/proteins/${hvoId}/psm-count`),
-          axios.get(`/api/proteins/${hvoId}/sequence`),
-          axios.get(`/api/proteins/${hvoId}/psms-by-dataset`).catch(() => ({ data: { success: false, data: [] } })),
-        ]);
-
-        if (!cancelled) {
-          setCoverage(covRes.data);
-          setProtein(protRes.data);
-          setPsmCount(
-            psmRes.data && typeof psmRes.data.psmCount === 'number'
-              ? psmRes.data.psmCount
-              : 0
-          );
-          setSequenceData(seqRes.data);
-
-          if (psmDatasetRes.data.success && psmDatasetRes.data.data) {
-            const total = psmDatasetRes.data.data.reduce((sum, item) => sum + item.psmCount, 0);
-            setTotalPsms(total);
-          }
-        }
+        const hit = await fetchBundled();
+        if (!hit && !cancelled) await fetchIndividual();
       } catch (error) {
         if (!cancelled) {
           console.error('Error fetching data:', error);
@@ -71,6 +95,7 @@ export default function ProteinPlotPage() {
         if (!cancelled) setLoading(false);
       }
     }
+
     fetchAll();
     return () => { cancelled = true; };
   }, [hvoId]);

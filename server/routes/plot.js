@@ -204,12 +204,7 @@ router.get('/plot/peptide-coverage/:protein_id', async (req, res) => {
       shapes,
       xaxis: {
         title: 'Protein Sequence Position',
-        tickmode: 'array',
-        tickvals: Array.from({ length: L }, (_, i) => i + 1),
-        ticktext: seq.split(''),
-        tickfont: { size: 9 },
         showgrid: true,
-        gridcolor: '#e8e8e8',
         range: [0.5, L + 0.5],
       },
       yaxis: {

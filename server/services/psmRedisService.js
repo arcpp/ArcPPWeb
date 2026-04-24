@@ -132,8 +132,25 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+/**
+ * Get bundled plot-page data for a protein from Redis.
+ * @param {string} proteinId
+ * @returns {Promise<Object|null>}
+ */
+async function getProteinPage(proteinId) {
+  if (!redisClient.isOpen) return null;
+  try {
+    const raw = await redisClient.get(`protein:page:${proteinId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.error(`Redis protein:page error for ${proteinId}:`, err.message);
+    return null;
+  }
+}
+
 module.exports = {
   getPsmsByDataset,
+  getProteinPage,
   getCacheStats,
   proteinExistsInCache,
   redisClient

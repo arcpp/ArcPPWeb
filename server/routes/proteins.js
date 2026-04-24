@@ -2,7 +2,7 @@ const router = require('express').Router();
 const Protein = require('../model/proteins');
 const Peptide = require('../model/peptides');
 const { resolveProteinId } = require('../services/proteinIdResolver');
-const { getPsmsByDataset } = require('../services/psmRedisService');
+const { getPsmsByDataset, getProteinPage } = require('../services/psmRedisService');
 const { getProteinCoverage } = require('../coverage');
 const { getPlotDataForProtein } = require('../plotGenerator');
 const { MOD_COLORS, HVO_RE, UNIPROT_RE } = require('../utils/constants');
@@ -50,6 +50,40 @@ router.get('/proteins/ids', async (_req, res) => {
   } catch (e) {
     console.error('proteins/ids error', e);
     res.status(500).json({ error: 'Failed to fetch protein IDs' });
+  }
+});
+
+// Typeahead search across hvo_id and protein_id (UniProt accession)
+router.get('/proteins/search', async (req, res) => {
+  try {
+    const raw = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
+    if (!raw) return res.json({ results: [] });
+
+    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const prefixRe = new RegExp(`^${escaped}`, 'i');
+
+    const docs = await Protein.find(
+      { $or: [{ hvo_id: prefixRe }, { protein_id: prefixRe }] },
+      { _id: 0, hvo_id: 1, protein_id: 1 },
+    )
+      .limit(limit * 2)
+      .lean();
+
+    const seen = new Set();
+    const results = [];
+    for (const d of docs) {
+      const displayId = d.hvo_id || d.protein_id;
+      if (!displayId || seen.has(displayId)) continue;
+      seen.add(displayId);
+      results.push({ label: displayId, value: displayId });
+      if (results.length >= limit) break;
+    }
+
+    res.json({ results });
+  } catch (e) {
+    console.error('proteins/search error', e);
+    res.status(500).json({ error: 'Failed to search proteins' });
   }
 });
 
@@ -232,6 +266,42 @@ router.get('/proteins/:protein_id/psm-count', async (req, res) => {
   } catch (err) {
     console.error('PSM count error:', err);
     res.status(500).json({ error: 'Failed to compute PSM count' });
+  }
+});
+
+// Bundled plot-page data (Redis-first, falls back to 404 so the client can use individual endpoints)
+router.get('/proteins/:protein_id/page', async (req, res) => {
+  const displayId = req.params.protein_id;
+  try {
+    let page = await getProteinPage(displayId);
+
+    if (!page) {
+      // Try the canonical (non-HVO) id too
+      const doc = await findProteinByDisplayId(displayId, { hvo_id: 1, protein_id: 1 });
+      if (doc) {
+        const alt = doc.hvo_id || doc.protein_id;
+        if (alt && alt !== displayId) page = await getProteinPage(alt);
+      }
+    }
+
+    if (!page) return res.status(404).json({ error: 'Page cache miss' });
+
+    let psmsByDataset = [];
+    try {
+      psmsByDataset = (await getPsmsByDataset(displayId)) || [];
+    } catch { /* non-fatal */ }
+
+    res.json({
+      source: 'redis',
+      coverage: page.coverage,
+      details: page.details,
+      psmCount: page.psmCount,
+      sequence: page.sequence,
+      psmsByDataset,
+    });
+  } catch (err) {
+    console.error('proteins/page error', err);
+    res.status(500).json({ error: 'Failed to fetch protein page' });
   }
 });
 
