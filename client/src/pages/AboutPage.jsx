@@ -16,7 +16,7 @@ const SPECIES = [
 
 const GITHUB_ORG = 'https://github.com/arcpp';
 const GITHUB_DOWNLOADS = 'https://github.com/arcpp/ArcPP';
-const NATURE_2020 = 'https://www.nature.com/articles/s41467-020-17943-6';
+const NATURE_2020 = 'https://www.nature.com/articles/s41467-020-16784-7';
 const PLOS_2021 = 'https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.3001277';
 const CONTACT_EMAIL = 'archaealproteomeproject@gmail.com';
 
