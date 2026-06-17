@@ -8,6 +8,7 @@ import 'react-circular-progressbar/dist/styles.css';
 import NavBar from '../components/NavBar';
 import NightingalePeptidePlot from '../components/NightingalePeptidePlot';
 import PSMsByDatasetChart from '../components/PSMsByDatasetChart';
+import PeptideTable from '../components/PeptideTable';
 import GlassCard from '../components/GlassCard';
 import SequenceViewer from '../components/SequenceViewer';
 import { useTheme } from '../ThemeContext';
@@ -126,12 +127,12 @@ export default function ProteinPlotPage() {
   const { uniProtein_id, qValue, description, hydrophobicity, pI, molecular_weight } = protein;
 
   const statItems = [
-    { label: 'q-Value',       value: qValue != null ? qValue : '—' },
-    { label: 'Peptides',      value: psmCount != null ? psmCount : '—' },
-    { label: 'PSMs',          value: totalPsms != null ? totalPsms.toLocaleString() : '—' },
-    { label: 'pI',            value: pI != null ? pI.toFixed(2) : '—' },
-    { label: 'Hydrophobicity',value: hydrophobicity != null ? hydrophobicity.toFixed(3) : '—' },
-    { label: 'Mol. Weight',   value: molecular_weight != null ? molecular_weight : '—' },
+    { label: 'q-Value',           value: qValue != null ? Number(qValue).toFixed(5) : '—' },
+    { label: 'Peptides',          value: psmCount != null ? psmCount : '—' },
+    { label: 'PSMs',              value: totalPsms != null ? totalPsms.toLocaleString() : '—' },
+    { label: 'pI',                value: pI != null ? pI.toFixed(2) : '—' },
+    { label: 'Hydrophobicity',    value: hydrophobicity != null ? hydrophobicity.toFixed(3) : '—' },
+    { label: 'Mol. Weight [kDa]', value: molecular_weight != null ? (molecular_weight / 1000).toFixed(2) : '—' },
   ];
 
   const mutedColor  = isDark ? '#8ea4ba' : '#718493';
@@ -299,6 +300,9 @@ export default function ProteinPlotPage() {
           mode={isDark ? 'dark' : 'light'}
           zoomToPosition={selectedPosition}
         />
+
+        {/* Peptide overview table — sequences, PSM counts, datasets (downloadable) */}
+        <PeptideTable proteinId={hvoId} />
       </main>
     </div>
   );

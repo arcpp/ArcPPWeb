@@ -194,9 +194,6 @@ function PSMsByDatasetChart({ proteinId, mode = 'dark' }) {
         <div>
           <strong style={{ color: isDark ? '#e6edf7' : '#0f172a', fontSize: 12 }}>{chartData.length}-datasets</strong> identified
         </div>
-        <div style={{ fontSize: 10, color: mutedColor, textAlign: 'right', maxWidth: '60%' }}>
-          Tip: Use arrow keys to pan, Home to reset, or click
-        </div>
       </div>
     </GlassCard>
   );

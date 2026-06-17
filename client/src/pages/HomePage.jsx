@@ -25,13 +25,23 @@ import ProteinTable from '../components/ProteinTable';
 
 const PAGE_SIZE = 25;
 
+// Angled, single-line species label so long names (e.g. M. thermolithotrophicus)
+// don't overlap or get cut off on the x-axis.
 function SpeciesTick({ x, y, payload, fill }) {
-  const [abbrev, ...rest] = (payload?.value || '').split(' ');
-  const name = rest.join(' ');
   return (
     <g transform={`translate(${x},${y})`}>
-      <text dy="1.1em" textAnchor="middle" fill={fill} fontSize={11} fontStyle="italic">{abbrev}</text>
-      {name && <text dy="2.4em" textAnchor="middle" fill={fill} fontSize={11} fontStyle="italic">{name}</text>}
+      <text
+        transform="rotate(-35)"
+        x={0}
+        y={0}
+        dy={4}
+        textAnchor="end"
+        fill={fill}
+        fontSize={11}
+        fontStyle="italic"
+      >
+        {payload?.value || ''}
+      </text>
     </g>
   );
 }
@@ -73,7 +83,8 @@ export default function HomePage() {
     () =>
       coverageData
         .filter((s) => s?.species)
-        .map((s) => ({ label: s.species, value: s.species })),
+        .map((s) => ({ label: s.species, value: s.species }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
     [coverageData]
   );
   const [speciesValue, setSpeciesValue] = useState(null);
@@ -261,22 +272,28 @@ export default function HomePage() {
   );
 
   const { coverageChartData, proteinsChartData } = useMemo(() => {
-    const speciesNames = coverageData.map((d) => d.species);
-    const speciesNamesShort = speciesNames.map((name) => {
+    const shortName = (name) => {
       const parts = name.trim().split(/\s+/);
       return parts.length >= 2 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : name;
-    });
+    };
+    // Both charts are sorted high-to-low so the bars read cleanly:
+    // the coverage chart by amino-acid sequence coverage, the proteins chart
+    // by the number of identified proteins.
     return {
-      coverageChartData: speciesNamesShort.map((name, i) => ({
-        name,
-        value: coverageData[i]?.coveragePercent || 0,
-        fullName: speciesNames[i],
-      })),
-      proteinsChartData: speciesNamesShort.map((name, i) => ({
-        name,
-        value: coverageData[i]?.observedProteins || 0,
-        fullName: speciesNames[i],
-      })),
+      coverageChartData: coverageData
+        .map((d) => ({
+          name: shortName(d.species),
+          value: d.coveragePercent || 0,
+          fullName: d.species,
+        }))
+        .sort((a, b) => b.value - a.value),
+      proteinsChartData: coverageData
+        .map((d) => ({
+          name: shortName(d.species),
+          value: d.observedProteins || 0,
+          fullName: d.species,
+        }))
+        .sort((a, b) => b.value - a.value),
     };
   }, [coverageData]);
 
@@ -298,13 +315,15 @@ export default function HomePage() {
     cursor:     { fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' },
   }), [isDark]);
 
-  const handleBarClick = (data) => {
-    if (!data?.fullName) return;
-    setSpeciesValue({ label: data.fullName, value: data.fullName });
-    setTableSpeciesFilter(data.fullName);
+  const selectSpecies = (name) => {
+    if (!name) return;
+    setSpeciesValue({ label: name, value: name });
+    setTableSpeciesFilter(name);
     setShowTable(true);
     setShowDatasetGraphs(true);
   };
+
+  const handleBarClick = (data) => selectSpecies(data?.fullName);
 
   const panelStyle = {
     background: isDark ? 'rgba(12,22,36,0.82)' : '#f7fafc',
@@ -414,6 +433,7 @@ export default function HomePage() {
             coverageData={coverageData}
             coverageLoading={coverageLoading}
             selectedSpecies={selectedSpeciesStats}
+            onSelectSpecies={selectSpecies}
           />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
@@ -485,12 +505,12 @@ export default function HomePage() {
               {/* Coverage bar chart */}
               <div style={panelStyle}>
                 <h3 style={{ fontSize: 15, fontWeight: 600, color: isDark ? '#e2e8f0' : '#132334', margin: '0 0 4px' }}>
-                  Species Proteome Coverage
+                  Species Proteome Sequence Coverage
                 </h3>
                 <p style={{ fontSize: 12, color: isDark ? '#7a9ab5' : '#718493', margin: '0 0 12px' }}>
                   Click a bar to select species
                 </p>
-                <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={coverageChartData} margin={{ top: 6, right: 6, bottom: 8, left: 4 }} barSize={36}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
                     <XAxis
@@ -499,7 +519,7 @@ export default function HomePage() {
                       tickLine={false}
                       axisLine={{ stroke: chartAxisColor }}
                       interval={0}
-                      height={44}
+                      height={92}
                     />
                     <YAxis
                       tick={{ fill: chartTickFill, fontSize: 11 }}
@@ -535,7 +555,7 @@ export default function HomePage() {
                 <p style={{ fontSize: 12, color: isDark ? '#7a9ab5' : '#718493', margin: '0 0 12px' }}>
                   Total proteins identified per species
                 </p>
-                <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={proteinsChartData} margin={{ top: 6, right: 6, bottom: 8, left: 4 }} barSize={36}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
                     <XAxis
@@ -544,7 +564,7 @@ export default function HomePage() {
                       tickLine={false}
                       axisLine={{ stroke: chartAxisColor }}
                       interval={0}
-                      height={44}
+                      height={92}
                     />
                     <YAxis
                       tick={{ fill: chartTickFill, fontSize: 11 }}

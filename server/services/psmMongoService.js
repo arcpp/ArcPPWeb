@@ -36,4 +36,57 @@ async function getPsmsByDataset(displayId) {
     .toArray();
 }
 
-module.exports = { getPsmsByDataset };
+// Per-peptide overview for a protein: each distinct peptide (by peptide_id),
+// its PSM count, and the datasets it was identified in. Grouped straight off
+// the direct-FK PSM collection, then joined to Peptides for the sequence.
+async function getPeptidesByProtein(displayId) {
+  const objectId = await _resolveProteinObjectId(displayId);
+  if (!objectId) return [];
+
+  const psms = mongoose.connection.db.collection('PeptideSpectrumMatches');
+  const rows = await psms
+    .aggregate([
+      { $match: { protein_id: objectId } },
+      {
+        $group: {
+          _id: '$peptide_id',
+          psmCount: { $sum: 1 },
+          datasets: { $addToSet: '$dataSet_id' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'Peptides',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'pep',
+        },
+      },
+      { $unwind: '$pep' },
+      {
+        $project: {
+          _id: 0,
+          sequence: '$pep.sequence',
+          startIndex: '$pep.startIndex',
+          endIndex: '$pep.endIndex',
+          psmCount: 1,
+          datasets: 1,
+        },
+      },
+      { $sort: { psmCount: -1 } },
+    ])
+    .toArray();
+
+  // Normalise: drop empty/blank dataset ids and sort them for stable display.
+  return rows.map((r) => ({
+    sequence: r.sequence,
+    startIndex: r.startIndex,
+    endIndex: r.endIndex,
+    psmCount: r.psmCount,
+    datasets: (r.datasets || [])
+      .filter((d) => typeof d === 'string' && d.trim())
+      .sort((a, b) => a.localeCompare(b)),
+  }));
+}
+
+module.exports = { getPsmsByDataset, getPeptidesByProtein };

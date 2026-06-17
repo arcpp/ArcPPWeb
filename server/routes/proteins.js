@@ -3,7 +3,7 @@ const Protein = require('../model/proteins');
 const Peptide = require('../model/peptides');
 const { resolveProteinId } = require('../services/proteinIdResolver');
 const { getProteinPage } = require('../services/psmRedisService');
-const { getPsmsByDataset } = require('../services/psmMongoService');
+const { getPsmsByDataset, getPeptidesByProtein } = require('../services/psmMongoService');
 const { getProteinCoverage } = require('../coverage');
 const { getPlotDataForProtein } = require('../plotGenerator');
 const { MOD_COLORS, HVO_RE, UNIPROT_RE } = require('../utils/constants');
@@ -471,6 +471,29 @@ router.get('/proteins/:proteinId/psms-by-dataset', async (req, res) => {
     });
   } catch (error) {
     console.error('PSM DATA ERROR:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Per-peptide overview for a protein: sequence, PSM count, datasets.
+// Powers the downloadable peptide table on the protein page.
+router.get('/proteins/:protein_id/peptides', async (req, res) => {
+  try {
+    const { protein_id } = req.params;
+    const data = await getPeptidesByProtein(protein_id);
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No peptide data found for protein ${protein_id}`,
+        protein_id,
+        data: [],
+      });
+    }
+
+    res.json({ success: true, protein_id, data });
+  } catch (error) {
+    console.error('Peptides-by-protein error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   TextField,
   InputAdornment,
@@ -37,6 +37,7 @@ export default function ProteinTable({
   selectedOverlaps,
 }) {
   const { isDark } = useTheme();
+  const navigate = useNavigate();
 
   const borderColor = isDark ? 'rgba(159,195,222,0.14)' : '#d8e2e8';
   const rowBorder = isDark ? 'rgba(159,195,222,0.12)' : '#e8eff3';
@@ -73,7 +74,7 @@ export default function ProteinTable({
   } : {};
 
   const downloadCSV = () => {
-    const headers = ['UniProt ID', 'Protein ID', 'PSMs', 'Coverage (%)', 'Datasets', 'Modifications', 'Description'];
+    const headers = ['UniProt ID', 'Protein ID', 'Peptides', 'Coverage (%)', 'Datasets', 'Modifications', 'Description'];
     const csvRows = [headers.join(',')];
     processedRows.forEach(r => {
       const datasets = Array.isArray(r.datasets) ? r.datasets.join('; ') : '';
@@ -179,7 +180,7 @@ export default function ProteinTable({
       }}>
         <div style={{ cursor: 'pointer' }} onClick={() => onSort('uniProtId')}>UniProt ID {sortIcon('uniProtId')}</div>
         <div style={{ cursor: 'pointer' }} onClick={() => onSort('hvoId')}>Protein ID {sortIcon('hvoId')}</div>
-        <div style={{ cursor: 'pointer' }} onClick={() => onSort('psmCount')}>PSMs {sortIcon('psmCount')}</div>
+        <div style={{ cursor: 'pointer' }} onClick={() => onSort('psmCount')}>Peptides {sortIcon('psmCount')}</div>
         <div style={{ cursor: 'pointer' }} onClick={() => onSort('coveragePercent')}>Coverage {sortIcon('coveragePercent')}</div>
         <div>Datasets</div>
         <div>Modifications</div>
@@ -204,6 +205,7 @@ export default function ProteinTable({
           return (
             <div
               key={r.hvoId}
+              onClick={() => navigate(`/plot/${r.hvoId}`)}
               style={{
                 display: 'grid',
                 gridTemplateColumns: '120px 120px 80px 100px 180px 180px 1fr',
@@ -226,21 +228,16 @@ export default function ProteinTable({
                 {(() => {
                   const accession = r.uniProtId || r.hvoId;
                   return accession ? (
-                    <a
-                      href={`https://www.uniprot.org/uniprotkb/${encodeURIComponent(accession)}/entry`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: isDark ? '#7dd3fc' : '#0369a1', textDecoration: 'underline', fontWeight: 600 }}
-                    >
+                    <span style={{ color: isDark ? '#7dd3fc' : '#0369a1', textDecoration: 'underline', fontWeight: 600 }}>
                       {accession}
-                    </a>
+                    </span>
                   ) : '\u2014';
                 })()}
               </div>
               <div>
-                <Link to={`/plot/${r.hvoId}`} style={{ color: isDark ? '#a9c9df' : '#325f86', textDecoration: 'none', fontWeight: 600 }}>
+                <span style={{ color: isDark ? '#a9c9df' : '#325f86', fontWeight: 600 }}>
                   {r.hvoId}
-                </Link>
+                </span>
               </div>
               <div style={{ fontSize: 14, color: textColor }}>{r.psmCount ?? '\u2014'}</div>
               <div style={{ fontSize: 14, color: textColor }}>
