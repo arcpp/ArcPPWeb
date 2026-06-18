@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const Dataset = require('../model/datasets');
-const { fetchSummariesBatched } = require('../utils/datasetCache');
+const { fetchSummariesBatched } = require('../services/datasetCache');
 
 function normalizeDatasetIds(rawValues) {
   const isValidDatasetId = (id) => /^(?:PXD|RPXD|PRXD)\d{6}$/i.test(id);

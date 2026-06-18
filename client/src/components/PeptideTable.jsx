@@ -1,3 +1,5 @@
+// Downloadable per-peptide table on the protein page: each peptide's sequence,
+// PSM count, and the datasets it was seen in. Data from GET /api/proteins/:id/peptides.
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Button, Chip, Tooltip } from '@mui/material';

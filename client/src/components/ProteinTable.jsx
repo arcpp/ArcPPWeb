@@ -1,3 +1,5 @@
+// Home-page protein table for the selected species: paginated + searchable, with
+// dataset/overlap filters. Each row links to that protein's plot page.
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {

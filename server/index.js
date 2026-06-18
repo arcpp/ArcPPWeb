@@ -1,3 +1,5 @@
+// Express server entry: loads env, connects MongoDB, mounts the /api routes, and
+// starts the background Redis cache refresh after the server is listening.
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -10,7 +12,6 @@ const proteinRoutes = require('./routes/proteins');
 const speciesRoutes = require('./routes/species');
 const datasetRoutes = require('./routes/datasets');
 const proteinsSummaryRoutes = require('./routes/proteinsSummary');
-const plotRoutes = require('./routes/plot');
 
 connectToMongo();
 
@@ -28,7 +29,6 @@ app.use('/api', proteinRoutes);
 app.use('/api', speciesRoutes);
 app.use('/api', datasetRoutes);
 app.use('/api', proteinsSummaryRoutes);
-app.use('/api', plotRoutes);
 
 const server = app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);

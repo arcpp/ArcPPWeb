@@ -2,6 +2,8 @@ import React, { useRef } from 'react';
 import { Tooltip } from '@mui/material';
 import { useTheme } from '../ThemeContext';
 
+// Protein sequence grid: colors residues covered by identified peptides and marks
+// modification sites (hover for the peptide/position detail).
 const COVERED_COLOR = '#60A5FA';
 
 export default function SequenceViewer({ sequence, modifications, onPositionClick, highlightedPosition }) {

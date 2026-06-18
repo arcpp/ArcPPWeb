@@ -1,3 +1,4 @@
+// Static About page: project description, the species list, citations, and links.
 import React from 'react';
 import NavBar from '../components/NavBar';
 import GlassCard from '../components/GlassCard';

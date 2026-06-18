@@ -1,6 +1,8 @@
+// Fetches + caches dataset (PXD) summaries scraped from ProteomeXchange
+// (axios + cheerio). Two-level cache: in-memory L1 + Redis L2. Backs the Datasets page.
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { redisClient } = require('../services/psmRedisService');
+const { redisClient } = require('./psmRedisService');
 
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h in-memory L1
 const DATASET_CACHE = new Map();

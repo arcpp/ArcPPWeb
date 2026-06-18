@@ -1,3 +1,5 @@
+// Builds the Mongo filter that selects one species' documents: a case-insensitive
+// species_id match, with prefix/name aliases for special cases (e.g. Haloferax HVO_).
 const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const SPECIES_ALIASES = {

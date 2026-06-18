@@ -1,3 +1,5 @@
+// Home-page summary bar charts: "Species Proteome Sequence Coverage" and
+// "Identified Proteins by Species" (data-driven, sorted descending).
 import React from 'react';
 import { Button, Chip } from '@mui/material';
 import { useTheme } from '../ThemeContext';

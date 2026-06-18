@@ -1,3 +1,5 @@
+// Total length covered by a set of [start, end] intervals, merging overlaps
+// (intervals that touch count as contiguous). Pure; returns an integer.
 function mergeIntervals(intervals) {
   if (!intervals || intervals.length === 0) return 0;
 

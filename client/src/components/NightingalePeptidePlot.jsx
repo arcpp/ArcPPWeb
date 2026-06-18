@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import GlassCard from './GlassCard';
 
+// Protein feature viewer built on the Nightingale web components (lazy-loaded
+// once): renders the sequence track with peptide coverage, modifications, and
+// enzyme cleavage sites, from GET /api/proteins/:id/features.
 let nightingaleLoaded = null;
 function loadNightingale() {
   if (!nightingaleLoaded) {

@@ -1,3 +1,5 @@
+// Protein detail page (/plot/:id): coverage ring + stats, the Nightingale feature
+// viewer, the PSMs-by-dataset chart, and the downloadable peptide table.
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';

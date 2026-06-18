@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useTheme } from '../ThemeContext';
 
+// Top navigation bar (Home / Datasets / About) with the light/dark theme toggle.
 export default function NavBar() {
   const { isDark, toggleTheme } = useTheme();
 

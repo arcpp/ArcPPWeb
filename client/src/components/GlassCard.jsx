@@ -1,5 +1,6 @@
 import React from 'react';
 
+// Frosted "glass" card wrapper: optional title + children, light/dark variant.
 export default function GlassCard({ title, children, style, className = '', variant = 'dark' }) {
   const isLight = variant === 'light';
 

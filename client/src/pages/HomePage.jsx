@@ -1,3 +1,5 @@
+// Home page: per-species coverage blocks (CoverageOverview), the species picker
+// + protein search, the protein table, and the two summary bar charts.
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTheme } from '../ThemeContext';

@@ -1,3 +1,5 @@
+// Protein sequence coverage = residues covered by identified peptides (q <= cutoff),
+// merged into intervals, over the protein length. Used by the protein page and coverage-stats.
 const Peptide = require('./model/peptides');
 const Protein = require('./model/proteins');
 const { mergeIntervals } = require('./utils/mergeIntervals');
