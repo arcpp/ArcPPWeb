@@ -55,12 +55,14 @@ router.get('/species/coverage-stats', async (req, res) => {
       try {
         console.log(`Processing ${config.name}...`);
 
-        const proteinDocs = await Protein.find(config.filter, { _id: 1, protein_id: 1, sequence: 1 }).lean();
+        // Only the lengths are needed here, so project sequence_length (an int)
+        // instead of transferring every full sequence string.
+        const proteinDocs = await Protein.find(config.filter, { _id: 1, protein_id: 1, sequence_length: 1 }).lean();
 
         const proteinLengths = {};
         for (const p of proteinDocs) {
-          if (p.sequence) {
-            proteinLengths[p.protein_id] = p.sequence.length;
+          if (p.sequence_length) {
+            proteinLengths[p.protein_id] = p.sequence_length;
           }
         }
 
@@ -71,11 +73,12 @@ router.get('/species/coverage-stats', async (req, res) => {
         for (const p of proteinDocs) {
           objectIdToName[p._id.toString()] = p.protein_id;
         }
-        const proteinObjectIds = proteinDocs.map(p => p._id);
 
+        // Fetch passing peptides via the indexed, denormalized species_id rather
+        // than a $in over thousands of protein _ids.
         const peptides = await Peptide.find(
           {
-            protein_id: { $in: proteinObjectIds },
+            species_id: config.name,
             q_value: { $lte: Q_VALUE_THRESHOLD },
           },
           { protein_id: 1, start_index: 1, end_index: 1, _id: 0 }
@@ -84,6 +87,7 @@ router.get('/species/coverage-stats', async (req, res) => {
         const intervalsByProtein = {};
         for (const pep of peptides) {
           const pid = objectIdToName[pep.protein_id.toString()];
+          if (!pid) continue;
           if (!intervalsByProtein[pid]) {
             intervalsByProtein[pid] = [];
           }
