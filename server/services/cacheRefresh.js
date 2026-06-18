@@ -15,8 +15,8 @@ const Protein = require('../model/proteins');
 const Peptide = require('../model/peptides');
 const { redisClient } = require('./psmRedisService');
 const { speciesSlug } = require('./proteinSummaryCache');
-const { mergeIntervals } = require('../utils/mergeIntervals');
 const { MOD_COLORS, Q_VALUE_THRESHOLD } = require('../utils/constants');
+const { computeProteinStats, buildSummaryRow } = require('./proteinStats');
 
 const MOD_LOOKUP = Object.keys(MOD_COLORS).reduce((acc, k) => {
   acc[k.toLowerCase()] = k;
@@ -106,15 +106,10 @@ async function refreshSpecies(speciesId) {
   ).lean();
   if (proteins.length === 0) return 0;
 
-  const objIdToDoc = new Map();
-  const proteinObjIds = [];
-  for (const doc of proteins) {
-    objIdToDoc.set(doc._id.toString(), doc);
-    proteinObjIds.push(doc._id);
-  }
-
+  // Fetch all of the species' peptides in one indexed query (species_id is
+  // denormalized + indexed on Peptides), then group them by protein.
   const peptides = await Peptide.find(
-    { protein_id: { $in: proteinObjIds } },
+    { species_id: speciesId },
     { protein_id: 1, sequence: 1, start_index: 1, end_index: 1, modification: 1, q_value: 1, _id: 0 },
   ).lean();
 
@@ -129,45 +124,12 @@ async function refreshSpecies(speciesId) {
   for (const doc of proteins) {
     const pid = displayId(doc);
     const seq = doc.sequence || '';
-    const seqLen = seq.length;
     const peps = byProtein.get(doc._id.toString()) || [];
 
-    const uniqueSeqs = new Set();
-    const intervals = [];
-    const mods = new Set();
-    for (const p of peps) {
-      if (p.sequence) uniqueSeqs.add(p.sequence);
-      if (p.q_value != null && p.q_value <= Q_VALUE_THRESHOLD
-          && typeof p.start_index === 'number' && typeof p.end_index === 'number') {
-        intervals.push([p.start_index, p.end_index]);
-      }
-      const mod = p.modification?.trim();
-      if (mod && mod !== 'Unmodified' && mod !== 'N/A') {
-        mod.split(';').forEach((part) => {
-          const t = part.trim();
-          if (t) mods.add(t);
-        });
-      }
-    }
-
-    let coveredLength = 0;
-    if (seqLen > 0 && intervals.length) {
-      coveredLength = Math.min(mergeIntervals(intervals.map((i) => i.slice())), seqLen);
-    }
-    const coveragePercent = seqLen > 0 ? (coveredLength / seqLen) * 100 : 0;
-    const psm_count = uniqueSeqs.size;
-
-    const summary = {
-      hvoId: pid,
-      uniProtId: (doc.protein_id && doc.protein_id.trim() && doc.protein_id.trim() !== '-')
-        ? doc.protein_id.trim() : pid,
-      species_id: speciesId,
-      description: doc.description || null,
-      psm_count,
-      coveragePercent: Math.round(coveragePercent * 10) / 10,
-      datasets: Array.isArray(doc.dataset_ids) ? doc.dataset_ids : [],
-      modifications: Array.from(mods),
-    };
+    // Shared with the proteinsSummary Mongo fallback so the two paths can't drift.
+    const stats = computeProteinStats(doc, peps);
+    const { seqLen, coveredLength, coveragePercent, psm_count } = stats;
+    const summary = buildSummaryRow(doc, stats);
 
     const page = {
       coverage: {

@@ -1,12 +1,9 @@
 const router = require('express').Router();
-const pLimit = require('p-limit');
 const Protein = require('../model/proteins');
 const Peptide = require('../model/peptides');
 const { searchProteins, getAllProteinSummaries, getProteinSummary } = require('../services/proteinSummaryCache');
-const { getProteinCoverage } = require('../coverage');
+const { computeProteinStats, buildSummaryRow } = require('../services/proteinStats');
 const { speciesToProteinIdFilter } = require('../utils/speciesFilter');
-
-const concurrency = pLimit(6);
 
 // Return the display ID for a protein doc (hvo_id for HVO, protein_id for others)
 function displayId(doc) {
@@ -132,70 +129,42 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
       filter.$or = orClauses;
     }
 
-    const total = await Protein.countDocuments(filter).exec();
-    const proteinDocs = await Protein.find(
-      filter,
-      { _id: 1, protein_id: 1, hvo_id: 1, uniprot_id: 1, description: 1, dataset_ids: 1, species_id: 1 }
-    )
-      .sort({ protein_id: 1 })
-      .skip(offset)
-      .limit(limitN)
-      .lean()
-      .exec();
+    // Order to match the Redis path exactly (by display id, numeric-aware): pull
+    // just the ids first (light), sort, then page. Then two batched queries fetch
+    // the page's full docs + all their peptides — no per-row N+1.
+    const idDocs = await Protein.find(filter, { _id: 1, protein_id: 1, hvo_id: 1 }).lean().exec();
+    idDocs.sort((a, b) => displayId(a).localeCompare(displayId(b), undefined, { numeric: true }));
 
-    const rows = await Promise.all(
-      proteinDocs.map((doc) =>
-        concurrency(async () => {
-          const pid = displayId(doc);
+    const total = idDocs.length;
+    const pageIdDocs = idDocs.slice(offset, offset + limitN);
+    const pageObjIds = pageIdDocs.map(d => d._id);
 
-          let psm_count = 0;
-          try {
-            const agg = await Peptide.aggregate([
-              { $match: { protein_id: doc._id } },
-              { $group: { _id: '$sequence' } },
-              { $count: 'unique_sequences' },
-            ]).exec();
-            psm_count = agg?.[0]?.unique_sequences ?? 0;
-          } catch {}
+    const fullDocs = await Protein.find(
+      { _id: { $in: pageObjIds } },
+      { _id: 1, protein_id: 1, hvo_id: 1, uniprot_id: 1, description: 1, dataset_ids: 1, species_id: 1, sequence_length: 1 },
+    ).lean();
+    const docById = new Map(fullDocs.map(d => [d._id.toString(), d]));
 
-          let coveragePercent = 0;
-          try {
-            const cov = await getProteinCoverage(pid);
-            coveragePercent = Number(cov?.coverage_percent || 0);
-          } catch {}
+    const pagePeptides = await Peptide.find(
+      { protein_id: { $in: pageObjIds } },
+      { protein_id: 1, sequence: 1, start_index: 1, end_index: 1, modification: 1, q_value: 1, _id: 0 },
+    ).lean();
+    const pepsByProtein = new Map();
+    for (const p of pagePeptides) {
+      const key = p.protein_id.toString();
+      if (!pepsByProtein.has(key)) pepsByProtein.set(key, []);
+      pepsByProtein.get(key).push(p);
+    }
 
-          let modifications = [];
-          try {
-            const peptides = await Peptide.find({ protein_id: doc._id }, { modification: 1, _id: 0 }).lean();
-            const modSet = new Set();
-            peptides.forEach(pep => {
-              if (pep.modification && pep.modification !== 'N/A' && pep.modification.trim()) {
-                pep.modification.split(';').forEach(mod => {
-                  const modType = mod.split(':')[0].trim();
-                  if (modType) modSet.add(modType);
-                });
-              }
-            });
-            modifications = Array.from(modSet).sort();
-          } catch {}
+    // Build each row with the same helper the Redis cache uses, in the sorted
+    // page order — so this fallback and the cached path return identical rows.
+    const rows = pageIdDocs.map((idDoc) => {
+      const doc = docById.get(idDoc._id.toString());
+      const stats = computeProteinStats(doc, pepsByProtein.get(idDoc._id.toString()) || []);
+      return buildSummaryRow(doc, stats);
+    });
 
-          const cleanProteinId = (doc.protein_id || '').trim();
-          const uniProtId = (cleanProteinId && cleanProteinId !== '-') ? cleanProteinId : pid;
-          return {
-            hvoId: pid,
-            uniProtId,
-            species_id: doc.species_id || '',
-            psm_count,
-            coveragePercent,
-            datasets: Array.isArray(doc.dataset_ids) ? doc.dataset_ids.filter(Boolean) : [],
-            description: doc.description || '',
-            modifications,
-          };
-        })
-      )
-    );
-
-    res.json({ speciesId, total, offset, limit: limitN, rows });
+    res.json({ speciesId, total, offset, limit: limitN, rows, source: 'mongo' });
   } catch (e) {
     console.error('species proteins-summary error', e);
     res.status(500).json({ error: 'Failed to build species protein summary' });
