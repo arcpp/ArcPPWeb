@@ -39,8 +39,8 @@ function buildModifications(peptides, seqLen) {
     if (p.q_value != null && p.q_value > Q_VALUE_THRESHOLD) continue;
 
     let hasColoredMod = false;
-    if (p.modification) {
-      for (const part of String(p.modification).split(';')) {
+    if (p.modifications) {
+      for (const part of String(p.modifications).split(';')) {
         const m = re.exec(part.trim());
         if (!m) continue;
         const type = canonicalModType(m[1]);
@@ -87,7 +87,7 @@ async function refreshSpecies(speciesId) {
   const proteins = await Protein.find(
     { species_id: speciesId },
     {
-      _id: 1, protein_id: 1, hvo_id: 1, description: 1, dataset_ids: 1,
+      _id: 1, protein_id: 1, description: 1, dataset_ids: 1,
       sequence: 1, q_value: 1, uniprot_id: 1, hydrophobicity: 1, pI: 1,
       molecular_weight: 1, species_id: 1,
     },
@@ -98,7 +98,7 @@ async function refreshSpecies(speciesId) {
   // denormalized + indexed on Peptides), then group them by protein.
   const peptides = await Peptide.find(
     { species_id: speciesId },
-    { protein_id: 1, sequence: 1, start_index: 1, end_index: 1, modification: 1, q_value: 1, _id: 0 },
+    { protein_id: 1, sequence: 1, start_index: 1, end_index: 1, modifications: 1, q_value: 1, _id: 0 },
   ).lean();
 
   const byProtein = new Map();
@@ -128,7 +128,6 @@ async function refreshSpecies(speciesId) {
       },
       details: {
         protein_id: doc.protein_id || null,
-        hvo_id: doc.hvo_id || null,
         description: doc.description || null,
         q_value: doc.q_value ?? null,
         uniprot_id: doc.uniprot_id || doc.protein_id || null,

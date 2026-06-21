@@ -7,17 +7,15 @@ const { getPsmsByDataset, getPeptidesByProtein } = require('../services/psmMongo
 const { getProteinCoverage } = require('../coverage');
 const { MOD_COLORS, HVO_RE, UNIPROT_RE, Q_VALUE_THRESHOLD, canonicalModType } = require('../utils/constants');
 
-// Resolve a display ID (hvo_id or protein_id) to a protein document
+// Resolve a display ID (protein_id — HVO locus tag or UniProt accession) to a doc
 async function findProteinByDisplayId(displayId, projection = {}) {
-  let doc = await Protein.findOne({ hvo_id: displayId }, projection).lean();
-  if (!doc) doc = await Protein.findOne({ protein_id: displayId }, projection).lean();
-  return doc;
+  return Protein.findOne({ protein_id: displayId }, projection).lean();
 }
 
-// All HVO gene IDs
+// All HVO gene IDs (now the HVO locus tag is the protein_id for Haloferax)
 router.get('/hvo-ids', async (req, res) => {
   try {
-    const ids = await Protein.distinct('hvo_id', { hvo_id: { $exists: true, $ne: null, $ne: '' } });
+    const ids = await Protein.distinct('protein_id', { protein_id: { $regex: '^HVO_', $options: 'i' } });
     res.json(ids.filter(Boolean).sort());
   } catch (e) {
     console.error('hvo-ids error', e);
@@ -28,13 +26,13 @@ router.get('/hvo-ids', async (req, res) => {
 // All display IDs grouped by type (for autocomplete)
 router.get('/proteins/ids', async (_req, res) => {
   try {
-    const hvoRaw = await Protein.distinct('hvo_id');
-    const hvo = hvoRaw.filter(Boolean).map(s => String(s).trim()).filter(s => HVO_RE.test(s));
+    const allRaw = await Protein.distinct('protein_id');
+    const hvo = allRaw.filter(Boolean).map(s => String(s).trim()).filter(s => HVO_RE.test(s));
     hvo.sort();
 
-    // Non-HVO species protein_ids (UniProt accessions)
-    const nonHvoRaw = await Protein.distinct('protein_id', { hvo_id: { $exists: false } });
-    const uniprot = nonHvoRaw
+    // UniProt accessions (other species' protein_id == accession)
+    const uniRaw = await Protein.distinct('uniprot_id');
+    const uniprot = uniRaw
       .filter(Boolean)
       .map(s => String(s).toUpperCase().trim())
       .filter(s => UNIPROT_RE.test(s));
@@ -47,7 +45,7 @@ router.get('/proteins/ids', async (_req, res) => {
   }
 });
 
-// Typeahead search across hvo_id and protein_id (UniProt accession)
+// Typeahead search across protein_id (display ID) and uniprot_id (accession)
 router.get('/proteins/search', async (req, res) => {
   try {
     const raw = String(req.query.q || '').trim();
@@ -58,8 +56,8 @@ router.get('/proteins/search', async (req, res) => {
     const prefixRe = new RegExp(`^${escaped}`, 'i');
 
     const docs = await Protein.find(
-      { $or: [{ hvo_id: prefixRe }, { protein_id: prefixRe }] },
-      { _id: 0, hvo_id: 1, protein_id: 1 },
+      { $or: [{ protein_id: prefixRe }, { uniprot_id: prefixRe }] },
+      { _id: 0, protein_id: 1 },
     )
       .limit(limit * 2)
       .lean();
@@ -67,7 +65,7 @@ router.get('/proteins/search', async (req, res) => {
     const seen = new Set();
     const results = [];
     for (const d of docs) {
-      const displayId = d.hvo_id || d.protein_id;
+      const displayId = d.protein_id;
       if (!displayId || seen.has(displayId)) continue;
       seen.add(displayId);
       results.push({ label: displayId, value: displayId });
@@ -81,42 +79,26 @@ router.get('/proteins/search', async (req, res) => {
   }
 });
 
-// Case-insensitive resolve (hvo_id or protein_id)
+// Case-insensitive resolve by protein_id (display ID) or uniprot_id (accession)
 router.get('/proteins/resolve', async (req, res) => {
   try {
     const raw = (req.query.q || '').trim();
     if (!raw) return res.status(400).json({ error: 'Missing q' });
 
-    // Try hvo_id
-    if (HVO_RE.test(raw)) {
-      const byHvo = await Protein.findOne(
-        { hvo_id: { $regex: `^${raw}$`, $options: 'i' } },
-        { _id: 0, protein_id: 1, hvo_id: 1, uniprot_id: 1, description: 1 }
-      ).lean();
-      if (byHvo) {
-        return res.json({
-          matchType: 'hvo_id',
-          protein_id: byHvo.hvo_id,
-          uniProtId: byHvo.protein_id,
-          description: byHvo.description || null,
-        });
-      }
-    }
-
-    // Try protein_id (UniProt)
-    if (UNIPROT_RE.test(raw)) {
-      const byUni = await Protein.findOne(
+    const doc = await Protein.findOne(
+      { $or: [
         { protein_id: { $regex: `^${raw}$`, $options: 'i' } },
-        { _id: 0, protein_id: 1, hvo_id: 1, description: 1 }
-      ).lean();
-      if (byUni) {
-        return res.json({
-          matchType: 'protein_id',
-          protein_id: byUni.hvo_id || byUni.protein_id,
-          uniProtId: byUni.protein_id,
-          description: byUni.description || null,
-        });
-      }
+        { uniprot_id: { $regex: `^${raw}$`, $options: 'i' } },
+      ] },
+      { _id: 0, protein_id: 1, uniprot_id: 1, description: 1 }
+    ).lean();
+    if (doc) {
+      return res.json({
+        matchType: HVO_RE.test(doc.protein_id) ? 'hvo_id' : 'protein_id',
+        protein_id: doc.protein_id,
+        uniProtId: doc.uniprot_id || doc.protein_id,
+        description: doc.description || null,
+      });
     }
 
     return res.status(404).json({ error: 'Protein not found' });
@@ -141,10 +123,10 @@ router.get('/proteins/:protein_id/sequence', async (req, res) => {
         protein_id: proteinDoc._id,
         $or: [{ q_value: { $lte: Q_VALUE_THRESHOLD } }, { q_value: null }, { q_value: { $exists: false } }],
       },
-      { sequence: 1, start_index: 1, end_index: 1, modification: 1, _id: 0 }
+      { sequence: 1, start_index: 1, end_index: 1, modifications: 1, _id: 0 }
     ).lean();
     const rows = peptideDocs.map(p => ({
-      seq: p.sequence, start: p.start_index, stop: p.end_index, mods: p.modification
+      seq: p.sequence, start: p.start_index, stop: p.end_index, mods: p.modifications
     }));
 
     const modifications = [];
@@ -216,7 +198,7 @@ router.get('/proteins/:protein_id/details', async (req, res) => {
   const displayId = req.params.protein_id;
   try {
     const doc = await findProteinByDisplayId(displayId, {
-      _id: 0, protein_id: 1, hvo_id: 1, description: 1, q_value: 1,
+      _id: 0, protein_id: 1, description: 1, q_value: 1,
       uniprot_id: 1, hydrophobicity: 1, pI: 1, molecular_weight: 1, species_id: 1
     });
 
@@ -235,19 +217,18 @@ router.get('/proteins/:protein_id/details', async (req, res) => {
   }
 });
 
-// Unique peptide-sequence count
+// Identified-peptide count: number of identified modforms (each Peptides entry
+// is one biological modform), so it matches the peptide table's row count.
 router.get('/proteins/:protein_id/psm-count', async (req, res) => {
   const displayId = req.params.protein_id;
   try {
     const objectId = await resolveProteinId(displayId);
     if (!objectId) return res.status(404).json({ error: `Protein ${displayId} not found` });
 
-    const result = await Peptide.aggregate([
-      { $match: { protein_id: objectId } },
-      { $group: { _id: '$sequence' } },
-      { $count: 'unique_sequences' },
-    ]).exec();
-    const count = result?.[0]?.unique_sequences ?? 0;
+    const count = await Peptide.countDocuments({
+      protein_id: objectId,
+      q_value: { $lte: Q_VALUE_THRESHOLD },
+    });
     res.json({ protein_id: displayId, psm_count: count });
   } catch (err) {
     console.error('PSM count error:', err);
@@ -259,17 +240,7 @@ router.get('/proteins/:protein_id/psm-count', async (req, res) => {
 router.get('/proteins/:protein_id/page', async (req, res) => {
   const displayId = req.params.protein_id;
   try {
-    let page = await getProteinPage(displayId);
-
-    if (!page) {
-      // Try the canonical (non-HVO) id too
-      const doc = await findProteinByDisplayId(displayId, { hvo_id: 1, protein_id: 1 });
-      if (doc) {
-        const alt = doc.hvo_id || doc.protein_id;
-        if (alt && alt !== displayId) page = await getProteinPage(alt);
-      }
-    }
-
+    const page = await getProteinPage(displayId);
     if (!page) return res.status(404).json({ error: 'Page cache miss' });
 
     let psmsByDataset = [];
@@ -296,12 +267,7 @@ router.get('/proteins/:protein_id/features', async (req, res) => {
   const displayId = req.params.protein_id;
   try {
     // Try Redis page bundle first, fall back to the DB-backed endpoints
-    let page = await getProteinPage(displayId);
-    if (!page) {
-      const doc = await findProteinByDisplayId(displayId, { hvo_id: 1, protein_id: 1 });
-      const alt = doc && (doc.hvo_id || doc.protein_id);
-      if (alt && alt !== displayId) page = await getProteinPage(alt);
-    }
+    const page = await getProteinPage(displayId);
 
     let sequence, modifications;
     if (page) {
@@ -316,15 +282,15 @@ router.get('/proteins/:protein_id/features', async (req, res) => {
           protein_id: doc._id,
           $or: [{ q_value: { $lte: Q_VALUE_THRESHOLD } }, { q_value: null }, { q_value: { $exists: false } }],
         },
-        { sequence: 1, start_index: 1, end_index: 1, modification: 1, _id: 0 },
+        { sequence: 1, start_index: 1, end_index: 1, modifications: 1, _id: 0 },
       ).lean();
       modifications = [];
       const seen = new Set();
       const re = /(.+):(\d+)$/;
       for (const p of peps) {
         let colored = false;
-        if (p.modification) {
-          for (const part of String(p.modification).split(';')) {
+        if (p.modifications) {
+          for (const part of String(p.modifications).split(';')) {
             const m = re.exec(part.trim());
             if (!m) continue;
             const type = canonicalModType(m[1]);

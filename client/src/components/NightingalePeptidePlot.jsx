@@ -38,6 +38,9 @@ export default function NightingalePeptidePlot({ hvoId, mode = 'light', zoomToPo
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  // Current visible residue window [start, end]; mirrors the manager's
+  // display-start/display-end so the toolbar can show it and drive zoom/pan.
+  const [view, setView] = useState(null);
 
   const managerRef = useRef(null);
   const trackRefs = useRef({});
@@ -108,6 +111,28 @@ export default function NightingalePeptidePlot({ hvoId, mode = 'light', zoomToPo
     managerRef.current.setAttribute('highlight', `${zoomToPosition}:${zoomToPosition}`);
   }, [zoomToPosition, features]);
 
+  // Initialise the visible window to the whole protein once data is in.
+  useEffect(() => {
+    if (features) setView({ start: 1, end: features.length });
+  }, [features]);
+
+  // Mirror gesture-driven zoom/pan (brush drag, Ctrl+scroll) back into `view`
+  // so the toolbar label stays accurate. The Nightingale `change` event bubbles
+  // up to this container after the manager has applied the new attributes.
+  useEffect(() => {
+    const node = containerDiv.current;
+    if (!node || !features) return;
+    const onChange = () => {
+      const el = navigationRef.current || sequenceRef.current;
+      if (!el) return;
+      const s = parseFloat(el.getAttribute('display-start'));
+      const e = parseFloat(el.getAttribute('display-end'));
+      if (Number.isFinite(s) && Number.isFinite(e) && e > s) setView({ start: s, end: e });
+    };
+    node.addEventListener('change', onChange);
+    return () => node.removeEventListener('change', onChange);
+  }, [features]);
+
   const titleLabel = useMemo(() => (
     <span style={{ fontWeight: 600, color: isDark ? '#e6edf7' : '#1b2d3f' }}>
       Peptides · Modifications · Cleavage Sites
@@ -148,6 +173,53 @@ export default function NightingalePeptidePlot({ hvoId, mode = 'light', zoomToPo
     );
   }
 
+  // --- zoom / pan controls -------------------------------------------------
+  // Setting display-start/display-end on the manager propagates to every
+  // registered track (verified), so the buttons need only touch the manager.
+  const MIN_WINDOW = 5; // residues
+  const currentView = view || { start: 1, end: features.length };
+  const applyView = (start, end) => {
+    const len = features.length;
+    let w = Math.min(Math.max(end - start, MIN_WINDOW), len - 1);
+    let s = start, e = start + w;
+    if (s < 1) { s = 1; e = 1 + w; }
+    if (e > len) { e = len; s = len - w; }
+    s = Math.max(1, Math.round(s));
+    e = Math.min(len, Math.round(e));
+    const mgr = managerRef.current;
+    if (mgr) {
+      mgr.setAttribute('display-start', String(s));
+      mgr.setAttribute('display-end', String(e));
+    }
+    setView({ start: s, end: e });
+  };
+  const zoomBy = (factor) => {
+    const { start, end } = currentView;
+    const c = (start + end) / 2;
+    const w = (end - start) * factor;
+    applyView(c - w / 2, c + w / 2);
+  };
+  const panBy = (dir) => {
+    const { start, end } = currentView;
+    const step = (end - start) * 0.4 * dir;
+    applyView(start + step, end + step);
+  };
+  const resetView = () => applyView(1, features.length);
+  const atFullView = Math.round(currentView.start) <= 1 && Math.round(currentView.end) >= features.length;
+
+  const muted = isDark ? '#9fb4ca' : '#5f7282';
+  const btnStyle = {
+    border: isDark ? '1px solid rgba(157,196,224,0.25)' : '1px solid #cdd9e5',
+    background: isDark ? 'rgba(20,33,52,0.6)' : '#fff',
+    color: isDark ? '#dbe7f3' : '#27384a',
+    borderRadius: 7, cursor: 'pointer', fontSize: 13, lineHeight: 1,
+    padding: '6px 10px', minWidth: 32, fontWeight: 700,
+  };
+  const ZBtn = ({ onClick, title, children, wide }) => (
+    <button type="button" style={{ ...btnStyle, minWidth: wide ? 'auto' : btnStyle.minWidth }}
+      onClick={onClick} title={title} aria-label={title}>{children}</button>
+  );
+
   return (
     <GlassCard title={titleLabel} variant={isDark ? 'dark' : 'light'}>
       <div ref={containerDiv} style={{
@@ -166,7 +238,32 @@ export default function NightingalePeptidePlot({ hvoId, mode = 'light', zoomToPo
             display: block !important;
             vertical-align: top !important;
           }
+          /* Make the position-bar drag handles visible so the brush-to-zoom
+             affordance is discoverable (it's a 6px target otherwise). */
+          .ngl-grid nightingale-navigation .handle {
+            fill: #6FA8DC !important;
+            fill-opacity: 0.55 !important;
+            stroke: #3b7fc4 !important;
+            stroke-width: 1 !important;
+          }
+          .ngl-grid nightingale-navigation .selection {
+            stroke: #6FA8DC !important;
+            stroke-opacity: 0.9 !important;
+          }
         `}</style>
+
+        {/* Zoom / pan controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, color: muted, fontWeight: 600, marginRight: 'auto' }}>
+            Showing residues {Math.round(currentView.start)}–{Math.round(currentView.end)} of {features.length}
+          </span>
+          <ZBtn onClick={() => panBy(-1)} title="Pan left">◀</ZBtn>
+          <ZBtn onClick={() => zoomBy(1 / 0.6)} title="Zoom out">–</ZBtn>
+          <ZBtn onClick={() => zoomBy(0.6)} title="Zoom in">+</ZBtn>
+          <ZBtn onClick={() => panBy(1)} title="Pan right">▶</ZBtn>
+          <ZBtn onClick={resetView} title="Reset view" wide>Reset</ZBtn>
+        </div>
+
         {/* eslint-disable-next-line react/no-unknown-property */}
         <nightingale-manager
           ref={managerRef}
@@ -253,7 +350,7 @@ export default function NightingalePeptidePlot({ hvoId, mode = 'light', zoomToPo
           <Swatch color="#14B8A6" label="Trypsin (K/R)" />
           <Swatch color="#86EFAC" label="GluC (D/E)" />
           <span style={{ marginLeft: 'auto', fontSize: 10, fontStyle: 'italic' }}>
-            Drag ruler to pan · Hold Ctrl + scroll to zoom
+            Zoom/pan with the controls above · or drag the position-bar handles · Ctrl + scroll over the sequence
           </span>
         </div>
       </div>

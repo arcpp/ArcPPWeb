@@ -58,6 +58,7 @@ export default function PeptideTable({ proteinId }) {
     const dir = sort.dir === 'asc' ? 1 : -1;
     const val = (r) => {
       if (sort.key === 'sequence') return r.sequence || '';
+      if (sort.key === 'modifications') return r.modifications || '';
       if (sort.key === 'datasets') return (r.datasets || []).length;
       return r.psm_count ?? -1;
     };
@@ -70,11 +71,11 @@ export default function PeptideTable({ proteinId }) {
   }, [data, sort]);
 
   const downloadCSV = () => {
-    const headers = ['Peptide Sequence', 'PSMs', 'Datasets'];
+    const headers = ['Peptide Sequence', 'Modifications', 'PSMs', 'Datasets'];
     const csvRows = [headers.join(',')];
     rows.forEach((r) => {
       const datasets = Array.isArray(r.datasets) ? r.datasets.join('; ') : '';
-      csvRows.push([r.sequence || '', r.psm_count ?? '', datasets].join(','));
+      csvRows.push([r.sequence || '', r.modifications || '', r.psm_count ?? '', datasets].join(','));
     });
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -126,7 +127,7 @@ export default function PeptideTable({ proteinId }) {
           {/* Column headers */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 90px 1.2fr',
+            gridTemplateColumns: '1.4fr 1fr 80px 1.1fr',
             gap: 12,
             padding: '10px 16px',
             color: headerColor,
@@ -139,6 +140,7 @@ export default function PeptideTable({ proteinId }) {
             zIndex: 1,
           }}>
             <div style={{ cursor: 'pointer' }} onClick={() => onSort('sequence')}>Peptide Sequence {sortIcon('sequence')}</div>
+            <div style={{ cursor: 'pointer' }} onClick={() => onSort('modifications')}>Modifications {sortIcon('modifications')}</div>
             <div style={{ cursor: 'pointer' }} onClick={() => onSort('psm_count')}>PSMs {sortIcon('psm_count')}</div>
             <div style={{ cursor: 'pointer' }} onClick={() => onSort('datasets')}>Datasets {sortIcon('datasets')}</div>
           </div>
@@ -152,7 +154,7 @@ export default function PeptideTable({ proteinId }) {
                 key={`${r.sequence}-${idx}`}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 90px 1.2fr',
+                  gridTemplateColumns: '1.4fr 1fr 80px 1.1fr',
                   gap: 12,
                   padding: '10px 16px',
                   borderBottom: idx === rows.length - 1 ? 'none' : `1px solid ${rowBorder}`,
@@ -167,6 +169,15 @@ export default function PeptideTable({ proteinId }) {
                   lineHeight: 1.4,
                 }}>
                   {r.sequence}
+                </div>
+                <div style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: 12,
+                  wordBreak: 'break-word',
+                  lineHeight: 1.4,
+                  color: r.modifications ? textColor : mutedColor,
+                }}>
+                  {r.modifications || '—'}
                 </div>
                 <div style={{ fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
                   {r.psm_count?.toLocaleString() ?? '—'}

@@ -25,12 +25,9 @@ async function getCoveredLength(proteinObjectId) {
   return mergeIntervals(intervals);
 }
 
-// Accept hvo_id or protein_id
+// Resolve by protein_id (HVO locus tag or UniProt accession)
 async function getProteinCoverage(proteinId) {
-  let proteinDoc = await Protein.findOne({ hvo_id: proteinId }, { _id: 1, sequence: 1 }).lean();
-  if (!proteinDoc) {
-    proteinDoc = await Protein.findOne({ protein_id: proteinId }, { _id: 1, sequence: 1 }).lean();
-  }
+  const proteinDoc = await Protein.findOne({ protein_id: proteinId }, { _id: 1, sequence: 1 }).lean();
 
   if (!proteinDoc || !proteinDoc.sequence) {
     throw new Error(`Protein ${proteinId} not found in database`);

@@ -12,12 +12,11 @@
 //   PeptideSpectrumMatches.protein_id, .dataset_id, (protein_id, dataset_id)
 const mongoose = require('mongoose');
 const Protein = require('../model/proteins');
+const { Q_VALUE_THRESHOLD } = require('../utils/constants');
 
 async function _resolveProteinObjectId(displayId) {
   if (!displayId) return null;
-  let p = await Protein.findOne({ hvo_id: displayId }, { _id: 1 }).lean();
-  if (p) return p._id;
-  p = await Protein.findOne({ protein_id: displayId }, { _id: 1 }).lean();
+  const p = await Protein.findOne({ protein_id: displayId }, { _id: 1 }).lean();
   return p ? p._id : null;
 }
 
@@ -28,7 +27,7 @@ async function getPsmsByDataset(displayId) {
   const psms = mongoose.connection.db.collection('PeptideSpectrumMatches');
   return psms
     .aggregate([
-      { $match: { protein_id: objectId } },
+      { $match: { protein_id: objectId, q_value: { $lte: Q_VALUE_THRESHOLD } } },
       { $group: { _id: '$dataset_id', psm_count: { $sum: 1 } } },
       { $project: { _id: 0, dataset: '$_id', psm_count: 1 } },
       { $sort: { psm_count: -1 } },
@@ -46,7 +45,7 @@ async function getPeptidesByProtein(displayId) {
   const psms = mongoose.connection.db.collection('PeptideSpectrumMatches');
   const rows = await psms
     .aggregate([
-      { $match: { protein_id: objectId } },
+      { $match: { protein_id: objectId, q_value: { $lte: Q_VALUE_THRESHOLD } } },
       {
         $group: {
           _id: '$peptide_id',
@@ -67,6 +66,7 @@ async function getPeptidesByProtein(displayId) {
         $project: {
           _id: 0,
           sequence: '$pep.sequence',
+          modifications: '$pep.modifications',
           start_index: '$pep.start_index',
           end_index: '$pep.end_index',
           psm_count: 1,
@@ -80,6 +80,7 @@ async function getPeptidesByProtein(displayId) {
   // Normalise: drop empty/blank dataset ids and sort them for stable display.
   return rows.map((r) => ({
     sequence: r.sequence,
+    modifications: r.modifications || '',
     start_index: r.start_index,
     end_index: r.end_index,
     psm_count: r.psm_count,

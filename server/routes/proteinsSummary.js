@@ -63,7 +63,7 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
     let matchingProteinIds = null;
 
     if (selectedOverlaps.length > 0) {
-      const proteinsWithOverlap = await Protein.find(filter, { protein_id: 1, hvo_id: 1, dataset_ids: 1 }).lean();
+      const proteinsWithOverlap = await Protein.find(filter, { protein_id: 1, dataset_ids: 1 }).lean();
       matchingProteinIds = proteinsWithOverlap
         .filter(p => {
           const count = Array.isArray(p.dataset_ids) ? p.dataset_ids.length : 0;
@@ -74,13 +74,13 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
       if (matchingProteinIds.length === 0) {
         return res.json({ speciesId, total: 0, offset, limit: limitN, rows: [] });
       }
-      filter = { ...speciesToProteinIdFilter(speciesId), $or: [{ hvo_id: { $in: matchingProteinIds } }, { protein_id: { $in: matchingProteinIds } }] };
+      filter = { ...speciesToProteinIdFilter(speciesId), protein_id: { $in: matchingProteinIds } };
     }
 
     if (selectedDatasets.length > 0 && selectedOverlaps.length > 0) {
       const proteinsInDatasets = await Protein.find(
         { ...speciesToProteinIdFilter(speciesId), dataset_ids: { $in: selectedDatasets } },
-        { protein_id: 1, hvo_id: 1, dataset_ids: 1 }
+        { protein_id: 1, dataset_ids: 1 }
       ).lean();
       matchingProteinIds = proteinsInDatasets
         .filter(p => {
@@ -94,12 +94,12 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
       }
       filter = {
         ...speciesToProteinIdFilter(speciesId),
-        $or: [{ hvo_id: { $in: matchingProteinIds } }, { protein_id: { $in: matchingProteinIds } }],
+        protein_id: { $in: matchingProteinIds },
       };
     }
 
     if (searchQuery.trim()) {
-      const speciesProteinDocs = await Protein.find(speciesToProteinIdFilter(speciesId), { _id: 1, protein_id: 1, hvo_id: 1 }).lean();
+      const speciesProteinDocs = await Protein.find(speciesToProteinIdFilter(speciesId), { _id: 1, protein_id: 1 }).lean();
       const speciesObjectIds = speciesProteinDocs.map(p => p._id);
       const objIdToDisplay = {};
       for (const p of speciesProteinDocs) {
@@ -107,7 +107,7 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
       }
 
       const peptidesWithMod = await Peptide.find(
-        { protein_id: { $in: speciesObjectIds }, modification: { $regex: searchQuery.trim(), $options: 'i' } },
+        { protein_id: { $in: speciesObjectIds }, modifications: { $regex: searchQuery.trim(), $options: 'i' } },
         { protein_id: 1, _id: 0 }
       ).lean();
       const idsFromMod = [...new Set(peptidesWithMod.map(p => objIdToDisplay[p.protein_id.toString()]).filter(Boolean))];
@@ -115,12 +115,12 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
       const searchRegex = { $regex: searchQuery.trim(), $options: 'i' };
       const orClauses = [
         { protein_id: searchRegex },
-        { hvo_id: searchRegex },
+        { uniprot_id: searchRegex },
         { description: searchRegex },
         { dataset_ids: searchRegex },
       ];
       if (idsFromMod.length > 0) {
-        orClauses.push({ $or: [{ hvo_id: { $in: idsFromMod } }, { protein_id: { $in: idsFromMod } }] });
+        orClauses.push({ protein_id: { $in: idsFromMod } });
       }
       filter.$or = orClauses;
     }
@@ -128,7 +128,7 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
     // Order to match the Redis path exactly (by display id, numeric-aware): pull
     // just the ids first (light), sort, then page. Then two batched queries fetch
     // the page's full docs + all their peptides — no per-row N+1.
-    const idDocs = await Protein.find(filter, { _id: 1, protein_id: 1, hvo_id: 1 }).lean().exec();
+    const idDocs = await Protein.find(filter, { _id: 1, protein_id: 1 }).lean().exec();
     idDocs.sort((a, b) => displayId(a).localeCompare(displayId(b), undefined, { numeric: true }));
 
     const total = idDocs.length;
@@ -137,13 +137,13 @@ router.get('/species/:speciesId/proteins-summary', async (req, res) => {
 
     const fullDocs = await Protein.find(
       { _id: { $in: pageObjIds } },
-      { _id: 1, protein_id: 1, hvo_id: 1, uniprot_id: 1, description: 1, dataset_ids: 1, species_id: 1, sequence_length: 1 },
+      { _id: 1, protein_id: 1, uniprot_id: 1, description: 1, dataset_ids: 1, species_id: 1, sequence_length: 1 },
     ).lean();
     const docById = new Map(fullDocs.map(d => [d._id.toString(), d]));
 
     const pagePeptides = await Peptide.find(
       { protein_id: { $in: pageObjIds } },
-      { protein_id: 1, sequence: 1, start_index: 1, end_index: 1, modification: 1, q_value: 1, _id: 0 },
+      { protein_id: 1, sequence: 1, start_index: 1, end_index: 1, modifications: 1, q_value: 1, _id: 0 },
     ).lean();
     const pepsByProtein = new Map();
     for (const p of pagePeptides) {

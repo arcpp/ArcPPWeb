@@ -245,7 +245,7 @@ router.get('/species/:speciesId/modification-stats', async (req, res) => {
 
     const peptides = await Peptide.find(
       speciesObjIds.length > 0 ? { protein_id: { $in: speciesObjIds } } : { protein_id: null },
-      { modification: 1, protein_id: 1, _id: 0 }
+      { modifications: 1, protein_id: 1, _id: 0 }
     ).lean();
 
     const modCounts = {};
@@ -253,8 +253,8 @@ router.get('/species/:speciesId/modification-stats', async (req, res) => {
     const allowedMods = Object.keys(MOD_COLORS);
 
     peptides.forEach(pep => {
-      if (pep.modification && pep.modification !== 'N/A' && pep.modification.trim()) {
-        const mods = pep.modification.split(';');
+      if (pep.modifications && pep.modifications !== 'N/A' && pep.modifications.trim()) {
+        const mods = pep.modifications.split(';');
         mods.forEach(mod => {
           const modType = mod.split(':')[0].trim();
           if (modType && allowedMods.includes(modType)) {

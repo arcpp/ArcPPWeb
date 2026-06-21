@@ -2,10 +2,10 @@ const mongoose = require('mongoose');
 
 const proteinSchema = new mongoose.Schema({
   protein_id: String,
-  hvo_id: String,
   description: String,
   q_value: Number,
   species_id: String,
+  current_database: String,
   uniprot_id: String,
   sequence: String,
   hydrophobicity: Number,
@@ -16,7 +16,6 @@ const proteinSchema = new mongoose.Schema({
 { collection: 'Proteins' }
 );
 proteinSchema.index({ protein_id: 1 });
-proteinSchema.index({ hvo_id: 1 });
 proteinSchema.index({ species_id: 1 });
 
 module.exports = mongoose.model('Protein', proteinSchema);
