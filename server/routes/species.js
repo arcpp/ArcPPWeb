@@ -4,6 +4,7 @@ const Peptide = require('../model/peptides');
 const { speciesToProteinIdFilter } = require('../utils/speciesFilter');
 const { mergeIntervals } = require('../utils/mergeIntervals');
 const { MOD_COLORS, Q_VALUE_THRESHOLD } = require('../utils/constants');
+const { redisClient } = require('../services/psmRedisService');
 
 // In-memory coverage-stats cache (5 min)
 let coverageCache = null;
@@ -44,6 +45,25 @@ router.get('/species/coverage-stats', async (req, res) => {
     if (coverageCache && cacheTimestamp && (now - cacheTimestamp < CACHE_DURATION)) {
       console.log('✅ Returning cached coverage stats');
       return res.json(coverageCache);
+    }
+
+    // Persistent Redis cache, precomputed by the background cache warm
+    // (cacheRefresh). Serves instantly instead of re-scanning all peptides.
+    try {
+      if (redisClient.isOpen) {
+        const raw = await redisClient.get('coverage:stats');
+        if (raw) {
+          const stats = JSON.parse(raw);
+          if (Array.isArray(stats) && stats.length > 0) {
+            coverageCache = stats;
+            cacheTimestamp = now;
+            console.log('✅ Returning coverage stats from Redis');
+            return res.json(stats);
+          }
+        }
+      }
+    } catch (redisErr) {
+      console.error('   coverage:stats Redis read failed:', redisErr.message);
     }
 
     console.log('🔄 Calculating coverage stats (this may take a moment)...');
